@@ -12,7 +12,7 @@ import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.core.CloudSim;
-import org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.PowerHost;
+import org.cloudbus.cloudsim.power.PowerHost;
 import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyAbstract;
 
 import java.util.*;
@@ -22,7 +22,7 @@ import static java.lang.Math.pow;
 /**
  * @author canssm
  */
-public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocationPolicyAbstract {
+public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocationPolicyAbstractExtended {
 
 	/** The map between each VM and its allocated host.
 	 * The map key is a VM UID and the value is the allocated host for that VM. */
@@ -959,33 +959,6 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 	}
 
 
-	/**
-	 * Returns id of Host int AntHost structure for given Vm
-	 * @param theAntHost
-	 * @param vm
-	 * @return
-	 */
-	public int[] findIndexOfVmInAntHost(antHost theAntHost, Vm vm) {
-		int userId = vm.getUserId();
-		int vmId = vm.getId();
-		for(int i=0; i<theAntHost.Host.size(); i++) {
-			for(int j=0; j<theAntHost.Vm.get(i).size(); j++) {
-				if (userId == theAntHost.UserId.get(i).get(j) && vmId == theAntHost.Vm.get(i).get(j)) {
-					int[] indexOfVmAndItsHostInAntHost = new int[]{j,i};
-					return indexOfVmAndItsHostInAntHost;
-				}
-			}
-		}
-//		try {
-//
-//		}catch (IndexOutOfBoundsException e){
-//			System.out.println("Index out of bounds for vm, userId or host");
-//		}
-		// not found
-		int[] a = new int[]{-1, -1};
-		return a;
-	}
-
 	public int probabilisticResult(List<Double> nonSelectedPheromones,
 								   List<Double> nonSelectedHeuristics,
 								   List<Integer> notYetSelected
@@ -1140,7 +1113,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		double[] cumulativeDistribution = new double[antAvailableVmSize];
 		for(int i = 0; i<antAvailableVmSize; i++){
 			cumulativeDistribution[i] = Math.pow(nonSelectedPheromones.get(i),relativeImportancePheromone)
-					/Math.pow(nonSelectedHeuristics.get(i),relativeImportanceOfHeuristic);
+					*Math.pow(nonSelectedHeuristics.get(i),relativeImportanceOfHeuristic);
 			totalSum += cumulativeDistribution[i];
 		}
 		for(int i = 0; i<antAvailableVmSize; i++){
@@ -1164,12 +1137,14 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		// utilization of vms' host considered
 		double totalMips = vm.getHost().getTotalMips();
 		return (totalMips-vm.getHost().getAvailableMips())/(totalMips*vm.getMips()); //getCurrentRequestedTotalMips()); //
+//		return 1/vm.getMips();
 	}
 
 	public double heuristicCalculationHost(Host host){
 		//@TODO: this calculation should be more realistic: bw, ram, mips also be included to the calculations
 		//return pow(Math.abs((host.getTotalMips()-host.getAvailableMips())/host.getTotalMips()),-1);
-		return (host.getTotalMips()-host.getAvailableMips())/host.getTotalMips();
+		 return (host.getTotalMips()-host.getAvailableMips())/host.getTotalMips();
+//		return host.getTotalMips();
 	}
 
 	/**
@@ -1339,6 +1314,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 //
 //		return result;
 //	}
+
 
 	@Override
 	public boolean allocateHostForVm(Vm vm, Host host) {

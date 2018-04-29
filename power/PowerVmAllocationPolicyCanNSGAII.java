@@ -12,7 +12,7 @@ import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.core.CloudSim;
-import org.cloudbus.cloudsim.power.PowerHost;
+import org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.PowerHost;
 import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyMigrationAbstract;
 import org.cloudbus.cloudsim.power.PowerVmSelectionPolicy;
 
@@ -660,7 +660,7 @@ public class PowerVmAllocationPolicyCanNSGAII extends PowerVmAllocationPolicyMig
 	 * @return true, if the host is over utilized; false otherwise
 	 */
 	@Override
-	protected boolean isHostOverUtilized(PowerHost host) {
+	protected boolean isHostOverUtilized(org.cloudbus.cloudsim.power.PowerHost host) {
 		addHistoryEntry(host, overUtilization);
 		double totalRequestedMips = 0;
 		for (Vm vm : host.getVmList()) {

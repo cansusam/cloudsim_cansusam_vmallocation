@@ -12,7 +12,7 @@ import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.core.CloudSim;
-import org.cloudbus.cloudsim.power.PowerHost;
+import org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.PowerHost;
 import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyAbstract;
 
 import java.util.*;

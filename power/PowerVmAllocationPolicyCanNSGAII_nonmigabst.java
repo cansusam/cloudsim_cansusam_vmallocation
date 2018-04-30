@@ -17,6 +17,8 @@ import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyAbstract;
 
 import java.util.*;
 import java.util.stream.IntStream;
+import java.util.zip.DeflaterOutputStream;
+
 import static java.lang.Math.pow;
 
 /**
@@ -70,6 +72,10 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 	double crowdMaxValue =  Double.POSITIVE_INFINITY;
 
 	private Random randomGen;
+
+
+	double hostHeuristicAverage;
+	double VMHeuristicAverage;
 
 	/**
 	 * Instantiates a new PowerVmAllocationPolicySimple.
@@ -241,6 +247,9 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			List<antHost> antHostList = new ArrayList<antHost>();
 			List<LinkedList<Map<String, Object>>> migrationMapList = new ArrayList<LinkedList<Map<String, Object>>>();
 
+			List<ArrayList<Double>> antHeuristicsHost = new  ArrayList<ArrayList<Double>>();
+			List<ArrayList<Double>> antHeuristicsVM = new  ArrayList<ArrayList<Double>>();
+
 			Double[] antEnergyInfo = new Double[antNumber];
 			Integer[] antVMMigrationNumber = new Integer[antNumber];
             Double[] antSleepingHostInfo = new Double[antNumber];
@@ -268,6 +277,10 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			for(int i=0; i<antNumber; i++){
 				hostUtilization.add(new ArrayList<Double>(hostUtilizationSingle));
 				antNumberOfPMsToSleep.add(new ArrayList<Integer>());
+
+				antHeuristicsHost.add(new ArrayList<Double>(heuristicHost));
+				antHeuristicsVM.add(new ArrayList<Double>(heuristicVm));
+
 				int hostCounter=0;
 				antHost newMyHost = new antHost();
 				for(Host h:hostList){
@@ -293,6 +306,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 				antSelectedVm[i] = randomGen.nextInt(vmListWithoutNullHosts.size());
 			}
 
+			int hostSelectionResult = -1;
 			for(int k=0; k<antVMNumber; k++){ // TODO antnumber <-> vmList.size()
 				for(int l=0; l<antNumber; l++){
 					// select new VM
@@ -301,16 +315,33 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 					if(k!=0 && antSelectedVm[l] != -1)
 						antSelectedVm[l] = selectNewVm(vmListWithoutNullHosts,
 								pheromoneListVmAssign.get(antSelectedVm[l]),
-								migrationMapList.get(l),heuristicVm);
+								migrationMapList.get(l),antHeuristicsVM.get(l));
 					// select new Host
 					if (antSelectedVm[l] != -1)
-						selectNewHost(vmListWithoutNullHosts.get(antSelectedVm[l]),
+						hostSelectionResult = selectNewHost(vmListWithoutNullHosts.get(antSelectedVm[l]),
 								hostList,
 								pheromoneListHostSelect.get(antSelectedVm[l]),
-								heuristicHost,
+								antHeuristicsHost.get(l),
 								antHostList.get(l),
 								antNumberOfPMsToSleep.get(l),
 								migrationMapList.get(l));
+//					Update heuristics
+					// antSelectedVm[l] -> index in vmlist
+					// hostSelectionResult -> target host index in anthostlist
+					if (antSelectedVm[l] != -1 && hostSelectionResult != -1) {
+						double vmHostTotalMips = hostList.get(hostSelectionResult).getTotalMips();
+						Double vmHeuristicUpdate = (vmHostTotalMips-hostList.get(hostSelectionResult).getAvailableMips())/((vmHostTotalMips)*VMHeuristicAverage);
+
+						double targetHostHeuristicUpdate = (hostList.get(hostSelectionResult).getTotalMips() -
+								antHostList.get(l).utilVal.get(hostSelectionResult))/hostHeuristicAverage;
+						int sourceHostIndex = hostList.indexOf(vmListWithoutNullHosts.get(antSelectedVm[l]).getHost());
+						double sourceHostHeuristicUpdate = (hostList.get(sourceHostIndex).getTotalMips() -
+								antHostList.get(l).utilVal.get(sourceHostIndex))/hostHeuristicAverage;
+
+						antHeuristicsVM.get(l).set(antSelectedVm[l],vmHeuristicUpdate);
+						antHeuristicsHost.get(l).set(hostSelectionResult,targetHostHeuristicUpdate);
+						antHeuristicsHost.get(l).set(sourceHostIndex,sourceHostHeuristicUpdate);
+					}
 				}
 			}
 
@@ -951,7 +982,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		// if (destinationUtilization > hostList.get(destinationHost).getTotalMips())
         double newAvailableMips =  h.getTotalMips() - hostUtilization;
         double vmMips = vm.getMips();//vm.getCurrentRequestedTotalMips();//
-		return (h.getVmScheduler().getPeCapacity() >= vmMips
+		return (h.getVmScheduler().getPeCapacity()*0.9 >= vmMips
 				&& newAvailableMips >= vmMips
 				&& (hostUtilization + vmMips) < h.getTotalMips()
 				&& h.getRamProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedRam()) && h.getBwProvisioner()
@@ -1135,16 +1166,24 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		//return vm.getMips();//.getCurrentRequestedTotalMips();
 
 		// utilization of vms' host considered
-		double totalMips = vm.getHost().getTotalMips();
-		return (totalMips-vm.getHost().getAvailableMips())/(totalMips*vm.getMips()); //getCurrentRequestedTotalMips()); //
+		double hostTotalMips = vm.getHost().getTotalMips();
+//		return (totalMips-vm.getHost().getAvailableMips())/(totalMips*vm.getMips()); //getCurrentRequestedTotalMips()); //
+		return (hostTotalMips-vm.getHost().getAvailableMips())/(hostTotalMips);
 //		return 1/vm.getMips();
 	}
 
 	public double heuristicCalculationHost(Host host){
 		//@TODO: this calculation should be more realistic: bw, ram, mips also be included to the calculations
 		//return pow(Math.abs((host.getTotalMips()-host.getAvailableMips())/host.getTotalMips()),-1);
-		 return (host.getTotalMips()-host.getAvailableMips())/host.getTotalMips();
+//		 return (host.getTotalMips()-host.getAvailableMips())/host.getTotalMips();
 //		return host.getTotalMips();
+		return host.getAvailableMips();
+	}
+
+	public List<Double> heuristicUpdateVM(List<? extends Vm> vmList) {
+		List<Double> heuristicList = new ArrayList<Double>();
+
+		return heuristicList;
 	}
 
 	/**
@@ -1153,17 +1192,35 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 	 */
 	public List<Double> heuristicInitializationVm(List<? extends Vm> vmList) {
 		List<Double> heuristicList = new ArrayList<Double>();
+		Double sum = 0.0;
 		for(int i=0; i<vmList.size(); i++) {
-			heuristicList.add(heuristicCalculationVm(vmList.get(i)));
+			Double value = heuristicCalculationVm(vmList.get(i));
+			sum += value;
+			heuristicList.add(value);
+		}
+		VMHeuristicAverage = sum/vmList.size();
+		for(int i=0; i<vmList.size(); i++) {
+			heuristicList.set(i,heuristicList.get(i)/VMHeuristicAverage);
 		}
 		return  heuristicList;
-
 	}
 
+	/**
+	 * TODO Unite heuristic initialization functions, like pheromone update
+	 * @param hostList
+	 * @return
+	 */
 	public List<Double> heuristicInitializationHost(List<Host> hostList) {
 		List<Double> heuristicList = new ArrayList<Double>();
+		Double sum = 0.0;
 		for(int i=0; i<hostList.size(); i++) {
-			heuristicList.add(heuristicCalculationHost(hostList.get(i)));
+			Double value = heuristicCalculationHost(hostList.get(i));
+			sum += value;
+			heuristicList.add(value);
+		}
+		hostHeuristicAverage = sum/hostList.size();
+		for(int i=0; i<hostList.size(); i++) {
+			heuristicList.set(i,heuristicList.get(i)/hostHeuristicAverage);
 		}
 		return  heuristicList;
 	}

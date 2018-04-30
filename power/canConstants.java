@@ -31,7 +31,7 @@ public class canConstants {
         public static final double relativeImportanceOfPMsToSleep = 5;
         public static final double relativeImportanceOfEnergy = 5;
         public static final double relativeImportanceOfVMMigration = 1;
-        public static final double relativeImportanceOfHeuristic = 0;
+        public static final double relativeImportanceOfHeuristic = 1;
         public static final double relativeImportancePheromone = 2;
 
         public static final double pheromonePowerConstant = 2; // Math.pow(pheromonePowerConstant,ranksLength-k)/ranksLength;

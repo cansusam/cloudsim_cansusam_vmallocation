@@ -14,7 +14,6 @@ import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.power.PowerHost;
 import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyAbstract;
-
 import java.util.*;
 import java.util.stream.IntStream;
 import java.util.zip.DeflaterOutputStream;
@@ -143,7 +142,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 
 		List<Host> sleepingHosts = new ArrayList<>();
 		List<ArrayList<Double>> pheromoneListVmAssign = new ArrayList<ArrayList<Double>>();
-		List<ArrayList<Double>> pheromoneListHostSelect = new ArrayList<ArrayList<Double>>();
+//		List<ArrayList<Double>> pheromoneListHostSelect = new ArrayList<ArrayList<Double>>();
 		List<Double> heuristicVm = new ArrayList<>();
 		List<Double> heuristicHost = new ArrayList<>();
 
@@ -215,11 +214,11 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		pheromoneListVmAssign = pheromoneInitialization(pheromoneListVmAssign,vmListWithoutNullHosts.size(),
 				vmListWithoutNullHosts.size(), initialPheromoneLevelVmAssign);
 
-		pheromoneListHostSelect = pheromoneInitialization(pheromoneListHostSelect,vmListWithoutNullHosts.size(),
-				hostList.size(), initialPheromoneLevelHostSelect);
+//		pheromoneListHostSelect = pheromoneInitialization(pheromoneListHostSelect,vmListWithoutNullHosts.size(),
+//				hostList.size(), initialPheromoneLevelHostSelect);
 
 		heuristicVm = heuristicInitializationVm(vmListWithoutNullHosts);
-		heuristicHost = heuristicInitializationHost(hostList);
+//		heuristicHost = heuristicInitializationHost(hostList);
 		/** ACO simulation starts from this point */
 
 		int iteration = 0;
@@ -247,7 +246,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			List<antHost> antHostList = new ArrayList<antHost>();
 			List<LinkedList<Map<String, Object>>> migrationMapList = new ArrayList<LinkedList<Map<String, Object>>>();
 
-			List<ArrayList<Double>> antHeuristicsHost = new  ArrayList<ArrayList<Double>>();
+//			List<ArrayList<Double>> antHeuristicsHost = new  ArrayList<ArrayList<Double>>();
 			List<ArrayList<Double>> antHeuristicsVM = new  ArrayList<ArrayList<Double>>();
 
 			Double[] antEnergyInfo = new Double[antNumber];
@@ -278,7 +277,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 				hostUtilization.add(new ArrayList<Double>(hostUtilizationSingle));
 				antNumberOfPMsToSleep.add(new ArrayList<Integer>());
 
-				antHeuristicsHost.add(new ArrayList<Double>(heuristicHost));
+//				antHeuristicsHost.add(new ArrayList<Double>(heuristicHost));
 				antHeuristicsVM.add(new ArrayList<Double>(heuristicVm));
 
 				int hostCounter=0;
@@ -320,37 +319,36 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 					if (antSelectedVm[l] != -1)
 						hostSelectionResult = selectNewHost(vmListWithoutNullHosts.get(antSelectedVm[l]),
 								hostList,
-								pheromoneListHostSelect.get(antSelectedVm[l]),
-								antHeuristicsHost.get(l),
+//								pheromoneListHostSelect.get(antSelectedVm[l]),
+//								heuristicHost,
 								antHostList.get(l),
 								antNumberOfPMsToSleep.get(l),
 								migrationMapList.get(l));
 //					Update heuristics
 					// antSelectedVm[l] -> index in vmlist
 					// hostSelectionResult -> target host index in anthostlist
-					if (antSelectedVm[l] != -1 && hostSelectionResult != -1) {
-						double vmHostTotalMips = hostList.get(hostSelectionResult).getTotalMips();
-						Double vmHeuristicUpdate = (vmHostTotalMips-hostList.get(hostSelectionResult).getAvailableMips())/((vmHostTotalMips)*VMHeuristicAverage);
-
-						double targetHostHeuristicUpdate = (hostList.get(hostSelectionResult).getTotalMips() -
-								antHostList.get(l).utilVal.get(hostSelectionResult))/hostHeuristicAverage;
-						int sourceHostIndex = hostList.indexOf(vmListWithoutNullHosts.get(antSelectedVm[l]).getHost());
-						double sourceHostHeuristicUpdate = (hostList.get(sourceHostIndex).getTotalMips() -
-								antHostList.get(l).utilVal.get(sourceHostIndex))/hostHeuristicAverage;
-
-						antHeuristicsVM.get(l).set(antSelectedVm[l],vmHeuristicUpdate);
-						antHeuristicsHost.get(l).set(hostSelectionResult,targetHostHeuristicUpdate);
-						antHeuristicsHost.get(l).set(sourceHostIndex,sourceHostHeuristicUpdate);
-					}
+//					if (antSelectedVm[l] != -1 && hostSelectionResult != -1) {
+//						//double vmHostTotalMips = hostList.get(hostSelectionResult).getTotalMips();
+////						double vmHostTotalMips = vmListWithoutNullHosts.get(antSelectedVm[l]).getTotalUtilizationOfCpuMips(CloudSim.clock());
+////						Double vmHeuristicUpdate = (vmHostTotalMips-hostList.get(hostSelectionResult).getAvailableMips())/((vmHostTotalMips)*VMHeuristicAverage);
+//
+//						double targetHostHeuristicUpdate = (hostList.get(hostSelectionResult).getTotalMips() -
+//								antHostList.get(l).utilVal.get(hostSelectionResult))/hostHeuristicAverage;
+//						int sourceHostIndex = hostList.indexOf(vmListWithoutNullHosts.get(antSelectedVm[l]).getHost());
+//						double sourceHostHeuristicUpdate = (hostList.get(sourceHostIndex).getTotalMips() -
+//								antHostList.get(l).utilVal.get(sourceHostIndex))/hostHeuristicAverage;
+//
+////						antHeuristicsVM.get(l).set(antSelectedVm[l],vmHeuristicUpdate);
+//						antHeuristicsHost.get(l).set(hostSelectionResult,targetHostHeuristicUpdate);
+//						antHeuristicsHost.get(l).set(sourceHostIndex,sourceHostHeuristicUpdate);
+//					}
 				}
 			}
 
 
 			calculateMigrationNumber(antVMMigrationNumber,migrationMapList);
 			// Objective 2
-			int[] sortedIndicesOfVMMigration = IntStream.range(0, antVMMigrationNumber.length)
-					.boxed().sorted((i, j) -> antVMMigrationNumber[i].compareTo(antVMMigrationNumber[j]) )
-					.mapToInt(ele -> ele).toArray();
+			int[] sortedIndicesOfVMMigration = sortValues(antVMMigrationNumber);
 
 			int[] sortedIndicesOfEnergyAfter = {};
 			int[] sortedIndicesOfSleepingHosts = {};
@@ -358,9 +356,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			if(hostSleepControlInsteadEnergy) {
 				calculateSleepingHostNumber(antSleepingHostInfo, antNumberOfPMsToSleep);
 				// Objective 3
-				sortedIndicesOfSleepingHosts = IntStream.range(0, antSleepingHostInfo.length)
-						.boxed().sorted((i, j) -> antSleepingHostInfo[i].compareTo(antSleepingHostInfo[j]))
-						.mapToInt(ele -> ele).toArray();
+				sortedIndicesOfSleepingHosts = sortValues(antSleepingHostInfo);
 				// obj2 + obj3
 				ranks = ranking(nonDominatedSort(antSleepingHostInfo,antVMMigrationNumber),
 						crowdingDistance(antSleepingHostInfo,antVMMigrationNumber,
@@ -370,9 +366,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 				//calculateEnergy(antEnergyInfo,migrationMapList,antHostList);
 				calculateEnergy2(antEnergyInfo,migrationMapList,antHostList);
 				// Objective 1
-				sortedIndicesOfEnergyAfter = IntStream.range(0, antEnergyInfo.length)
-						.boxed().sorted((i, j) -> antEnergyInfo[i].compareTo(antEnergyInfo[j]) )
-						.mapToInt(ele -> ele).toArray();
+				sortedIndicesOfEnergyAfter = sortValues(antEnergyInfo);
 				// obj1 + obj2
 				ranks = ranking(nonDominatedSort(antEnergyInfo,antVMMigrationNumber),
 						crowdingDistance(antEnergyInfo,antVMMigrationNumber,
@@ -411,11 +405,18 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 				setAntFitnesses2(antFitness,antEnergyInfo,antVMMigrationNumber,globalMaxEnergy,globalMinEnergy,globalMaxVM,globalMinVM);
 			}
 
-			pheromoneUpdate(pheromoneListVmAssign,pheromoneDecayGlobal,migrationMapList,
-					antFitness, vmListWithoutNullHosts, hostList, "vm2vm", ranksFirstHalf);
+			/**
+			 * TODO
+			 * Add a variable which keeps the type of sort will be used as a base of updates (rank|energy|sleep)
+			 * dont need to comment out one the other in each time
+			 */
 
-			pheromoneUpdate(pheromoneListHostSelect,pheromoneDecayGlobal,migrationMapList,
-					antFitness, vmListWithoutNullHosts, hostList,"vm2host", ranksFirstHalf);
+
+			pheromoneUpdate(pheromoneListVmAssign,pheromoneDecayGlobal,migrationMapList,
+					antFitness, vmListWithoutNullHosts, hostList, "vm2vm", ranksFirstHalf);//sortedIndicesOfEnergyAfter);//
+
+//			pheromoneUpdate(pheromoneListHostSelect,pheromoneDecayGlobal,migrationMapList,
+//					antFitness, vmListWithoutNullHosts, hostList,"vm2host", ranksFirstHalf);
 
 			int indexOfBestAnt;
 			if(hostSleepControlInsteadEnergy) {
@@ -462,6 +463,13 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		return bestMigrationPlan;
 	}
 
+	public <T extends Comparable> int[] sortValues(T[] array){
+		int[] sortedIndicesOfVMMigration = IntStream.range(0, array.length)
+				.boxed().sorted((i, j) -> array[i].compareTo(array[j]) )
+				.mapToInt(ele -> ele).toArray();
+		return sortedIndicesOfVMMigration;
+	}
+
 	/**
 	 *
 	 * @param nonDomination
@@ -479,9 +487,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			for(int i=0; i<frontSize;i++) {
 				crowdingDistanceOfFront[i] = crowding[front.get(i)];
 			}
-			int[] sortedCrowdedDistanceIndices = IntStream.range(0, crowdingDistanceOfFront.length)
-					.boxed().sorted((i, j) -> crowdingDistanceOfFront[i].compareTo(crowdingDistanceOfFront[j]) )
-					.mapToInt(ele -> ele).toArray();
+			int[] sortedCrowdedDistanceIndices = sortValues(crowdingDistanceOfFront);
 
 			for(int i=0; i<frontSize; i++) {
 				ranks[counter] = front.get(sortedCrowdedDistanceIndices[i]);
@@ -818,16 +824,16 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 
 	public int selectNewHost(Vm selectedVm,
 							 List<Host> hostList,
-							 List<Double> pheromoneList,
-							 List<Double> heuristicList,
+//							 List<Double> pheromoneList,
+//							 List<Double> heuristicList,
 							 antHost theAntHost,
 							 ArrayList<Integer> antNumberOfPMsToSleep,
 							 LinkedList<Map<String,Object>> migrationMap
 	) {
 
 		List<Integer> availableHosts = new ArrayList<Integer>(); // index of available hosts in antHost
-		List<Double> availableHostPheromones = new ArrayList<Double>();	// probabilities of hosts according to index
-		List<Double> availableHostHeuristics = new ArrayList<Double>();	// probabilities of vms according to index
+//		List<Double> availableHostPheromones = new ArrayList<Double>();	// probabilities of hosts according to index
+//		List<Double> availableHostHeuristics = new ArrayList<Double>();	// probabilities of vms according to index
 
 		int[] indexOfVmAndItsHostInAntHost = findIndexOfVmInAntHost(theAntHost,selectedVm);
 		int indexOfVm = indexOfVmAndItsHostInAntHost[0];
@@ -847,8 +853,8 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 				availableHosts.add(i); // index of host is added
 //				if(Double.isNaN(pheromoneList.get(i)))
 //					Log.print("");
-				availableHostPheromones.add(pheromoneList.get(i));
-				availableHostHeuristics.add(heuristicList.get(i));
+//				availableHostPheromones.add(pheromoneList.get(i));
+//				availableHostHeuristics.add(heuristicList.get(i));
 			}
 		}
 		// there is no available host
@@ -863,13 +869,13 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		 *  host selection with pheromone matrix
 		 *  TODO check for returned value if it is index of host or host id
 		 */
-		 indexOfDestinationHost = probabilisticResult(availableHostPheromones,availableHostHeuristics,availableHosts);
+//		 indexOfDestinationHost = probabilisticResult(availableHostPheromones,availableHostHeuristics,availableHosts);
 
 		/**
 		 *  host selection with max util value
 		 *  TODO change selection of max utilized host
 		 */
-//		indexOfDestinationHost = findMaxUtiledhost(availableHosts,theAntHost.utilVal,hostList,vmMips);
+		indexOfDestinationHost = findMaxUtiledhost(availableHosts,theAntHost.utilVal,hostList,vmMips);
 
 
 		if (indexOfDestinationHost == -1)
@@ -982,7 +988,7 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		// if (destinationUtilization > hostList.get(destinationHost).getTotalMips())
         double newAvailableMips =  h.getTotalMips() - hostUtilization;
         double vmMips = vm.getMips();//vm.getCurrentRequestedTotalMips();//
-		return (h.getVmScheduler().getPeCapacity()*0.9 >= vmMips
+		return (h.getVmScheduler().getPeCapacity()*0.9 >= vmMips // TODO 0.9 keeps efficiency low, but prevents utilization crash
 				&& newAvailableMips >= vmMips
 				&& (hostUtilization + vmMips) < h.getTotalMips()
 				&& h.getRamProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedRam()) && h.getBwProvisioner()
@@ -1166,10 +1172,11 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 		//return vm.getMips();//.getCurrentRequestedTotalMips();
 
 		// utilization of vms' host considered
-		double hostTotalMips = vm.getHost().getTotalMips();
-//		return (totalMips-vm.getHost().getAvailableMips())/(totalMips*vm.getMips()); //getCurrentRequestedTotalMips()); //
-		return (hostTotalMips-vm.getHost().getAvailableMips())/(hostTotalMips);
-//		return 1/vm.getMips();
+		return vm.getTotalUtilizationOfCpuMips(CloudSim.clock());
+//		double hostTotalMips = vm.getHost().getTotalMips();
+////		return (totalMips-vm.getHost().getAvailableMips())/(totalMips*vm.getMips()); //getCurrentRequestedTotalMips()); //
+//		return (hostTotalMips-vm.getHost().getAvailableMips())/(hostTotalMips);
+////		return 1/vm.getMips();
 	}
 
 	public double heuristicCalculationHost(Host host){
@@ -1198,7 +1205,8 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			sum += value;
 			heuristicList.add(value);
 		}
-		VMHeuristicAverage = sum/vmList.size();
+//		VMHeuristicAverage = sum/vmList.size();
+		VMHeuristicAverage = sum;
 		for(int i=0; i<vmList.size(); i++) {
 			heuristicList.set(i,heuristicList.get(i)/VMHeuristicAverage);
 		}
@@ -1218,7 +1226,8 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
 			sum += value;
 			heuristicList.add(value);
 		}
-		hostHeuristicAverage = sum/hostList.size();
+//		hostHeuristicAverage = sum/hostList.size();
+		hostHeuristicAverage = sum;
 		for(int i=0; i<hostList.size(); i++) {
 			heuristicList.set(i,heuristicList.get(i)/hostHeuristicAverage);
 		}

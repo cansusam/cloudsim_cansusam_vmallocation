@@ -20,7 +20,7 @@ public class antHost {
     ArrayList<Integer> Host;
     ArrayList<ArrayList<Integer>> Vm;
     ArrayList<ArrayList<Integer>> UserId;
-    ArrayList<Double> utilVal;
+    ArrayList<Double> utilVal; // keeps total requested mips, TODO: confusing, meaning of utilization, totalReqMips/totalMips
 
     public antHost(){
         this.Host = new ArrayList<Integer>();

@@ -453,7 +453,6 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
      */
     public int[] ranking(List<ArrayList<Integer>> nonDomination, double[] crowding) {
         int[] ranks = new int[antNumber];
-
         int counter = 0;
         for(ArrayList<Integer> front : nonDomination) {
             //sort front by crowding distance
@@ -465,13 +464,11 @@ public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocati
             int[] sortedCrowdedDistanceIndices = IntStream.range(0, crowdingDistanceOfFront.length)
                     .boxed().sorted((i, j) -> crowdingDistanceOfFront[i].compareTo(crowdingDistanceOfFront[j]) )
                     .mapToInt(ele -> ele).toArray();
-
             for(int i=0; i<frontSize; i++) {
                 ranks[counter] = front.get(sortedCrowdedDistanceIndices[i]);
                 counter++;
             }
         }
-
         return ranks;
     }
 

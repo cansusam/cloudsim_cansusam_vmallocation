@@ -8,12 +8,12 @@
 
 package org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power;
 
-import org.cloudbus.cloudsim.Host;
-import org.cloudbus.cloudsim.Log;
-import org.cloudbus.cloudsim.Vm;
+import org.cloudbus.cloudsim.*;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.power.PowerHost;
 
+import java.io.*;
+import java.io.File;
 import java.util.*;
 import java.util.stream.IntStream;
 
@@ -39,14 +39,14 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 
 	/** Utilization boundaries. */
 
-	double relativeImportanceOfPMsToSleep;
-	double relativeImportanceOfEnergy;
-	double relativeImportanceOfVMMigration;
+	static double relativeImportanceOfPMsToSleep;
+	static double relativeImportanceOfEnergy;
+	static double relativeImportanceOfVMMigration;
 	double relativeImportanceOfHeuristic;
 	double relativeImportancePheromone;
 
 	int iterationLimit;
-	int antNumber;
+	static int antNumber;
 	//int antVMRatio;
 	int antVMNumber;
 	double parameterQ0;
@@ -70,6 +70,9 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	double crowdMaxValue =  Double.POSITIVE_INFINITY;
 
 	private Random randomGen;
+
+
+	int hostClearNumber = 20;
 
 	/**
 	 * Instantiates a new PowerVmAllocationPolicySimple.
@@ -133,6 +136,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 //		int antVMNumber = vmList.size(); //vmList.size()/antVMRatio;
 
 		LinkedList<Map<String, Object>> bestMigrationPlan = new LinkedList<Map<String, Object>>();
+		paretoList colonyParetoList = new paretoList();
 //		Double bestFitness = -1.0;
 
 		List<Host> sleepingHosts = new ArrayList<>();
@@ -152,47 +156,19 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		// Get current host list
 //		List<Host> hostList2 = new ArrayList<Host>();
 		List<Host> hostList = getHostList();
-		for (Vm vm : vmList){
-			if (vm.isInMigration()) {
-				vmsInMigraiton.add(vm);
-			}
-			if (vm.getHost() != null) {
-//				if (!hostList.contains(vm.getHost())) {
-//					hostList.add(vm.getHost());
-//				}
-				//vmListWithoutNullHosts.add(vm);
-			}else {
-				vmIDOfNullHostedVms.add(vm.getId());
-			}
-		}
+		findHostedVMs(vmListWithoutNullHosts,vmList,vmIDOfNullHostedVms,vmsInMigraiton);
 
 
 		// Host utilization matrix, shows remaining capacity to reach to sleep
 		ArrayList<Double> hostUtilizationSingle = new ArrayList<Double>();
-
 		// Calculate each hosts utilization and classify
-		double totalRequestedMips;//, totalRequestedMips_NOTUSED;
-		for(Host h: hostList) {
-//			totalRequestedMips_NOTUSED = hostList.get(i).getTotalMips()-hostList.get(i).getVmScheduler().getAvailableMips();
-			totalRequestedMips = 0;
-			for (Vm vm : h.getVmList()) {
-				totalRequestedMips +=  vm.getMips(); //vm.getCurrentRequestedTotalMips(); //
-				vmListWithoutNullHosts.add(vm);
-			}
-//			if(Math.abs(totalRequestedMips - totalRequestedMips_NOTUSED) > 0.1)
-//				Log.print("");
+		calculateHostUsedMips(vmListWithoutNullHosts,hostUtilizationSingle,sleepingHosts);
 
+		Double[] hostRealUtilization = new Double[hostList.size()];
+		calculateHostUtilization(hostUtilizationSingle,hostRealUtilization);
 
-
-			// update host utilization, according to indexes in hostlist*/
-
-			hostUtilizationSingle.add(totalRequestedMips);
-			//if(totalRequestedMips == hostList.get(i).getTotalMips()) sleepingHosts.add(hostList.get(i));
-			//if(hostList.get(i).getTotalMips() == hostList.get(i).getAvailableMips()) sleepingHosts.add(hostList.get(i));
-            if (h.getVmList().size() == 0) {
-                sleepingHosts.add(h);
-            }
-		}
+		int[] sortedHostUtilizationIndexes = new int[hostList.size()];
+		sortedHostUtilizationIndexes = sortValues(hostRealUtilization);
 
 //		int bestSleepingHost = sleepingHosts.size();
 
@@ -201,7 +177,6 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 //			Vm vm = findVmWithID(vmList, vmIDOfNullHostedVms.get(k));
 //			Log.print("");
 //		}
-
 
 		// Host utilization matrix, shows remaining capacity to reach to sleep
 		// Previously calculated value copied for each ant to simplify their calculation step
@@ -306,11 +281,15 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 					// select new VM
 					// for first condition, vm selected by randomly
                     // ant may not have a previously selected vm because it could not find appropriate one
-					if(k!=0 && antSelectedVm[l] != -1)
-						antSelectedVm[l] = selectNewVm(vmListWithoutNullHosts,
+					antSelectedVm[l] = selectNewVm(vmListWithoutNullHosts,
 														pheromoneListVmAssign.get(antSelectedVm[l]),
 														migrationMapList.get(l),
-														antHeuristicsVM.get(l));
+														antHeuristicsVM.get(l),
+														hostList,
+														sortedHostUtilizationIndexes,
+														l,
+														k);
+					//antSelectedVm[l] = getVMFromHost(l,sortedHostUtilizationIndexes,vmListWithoutNullHosts)
 					// select new Host
 					if (antSelectedVm[l] != -1)
 						hostSelectionResult = selectNewHost(vmListWithoutNullHosts.get(antSelectedVm[l]),
@@ -319,6 +298,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 															heuristicHost,
 															antHostList.get(l),
 															antNumberOfPMsToSleep.get(l),
+															sortedHostUtilizationIndexes,
 															migrationMapList.get(l));
 					// Update heuristics
 					// antSelectedVm[l] -> index in vmlist
@@ -330,64 +310,29 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 				}
 			}
 
-
 			calculateMigrationNumber(antVMMigrationNumber,migrationMapList);
-			// Objective 2
-			int[] sortedIndicesOfVMMigration = sortValues(antVMMigrationNumber);
-			int[] sortedIndicesOfEnergyAfter = {};
-			int[] sortedIndicesOfSleepingHosts = {};
+			calculateEnergy2(antEnergyInfo,migrationMapList,antHostList);
+
+			// check if new migration plans are fit to be a pareto solution
+			for (int i = 0; i < antNumber; i++) {
+				migrationPlanScores antsMigrationScores = new migrationPlanScores(antEnergyInfo[i],antVMMigrationNumber[i]);
+				colonyParetoList.compareAddRemove(migrationMapList.get(i),antsMigrationScores);
+			}
+
+			Double[] paretoEnergyInfo = new Double[colonyParetoList.currentElementNumber];
+			Integer[] paretoVMMigrationNumber = new Integer[colonyParetoList.currentElementNumber];
+			for (int i = 0; i < colonyParetoList.currentElementNumber; i++) {
+				paretoEnergyInfo[i] = colonyParetoList.scores.get(i).energyChange;
+				paretoVMMigrationNumber[i] = colonyParetoList.scores.get(i).vmMigrationNumber;
+			}
+
+			int[] paretoSortedIndicesOfVMMigration = sortValues(paretoVMMigrationNumber);
+			int[] paretoSortedIndicesOfEnergyAfter = sortValues(paretoEnergyInfo);
+
 			int[] ranks = {};
-			if(hostSleepControlInsteadEnergy) {
-				calculateSleepingHostNumber(antSleepingHostInfo, antNumberOfPMsToSleep);
-				// Objective 3
-				sortedIndicesOfSleepingHosts = sortValues(antSleepingHostInfo);
-				// obj2 + obj3
-				ranks = ranking(nonDominatedSort(antSleepingHostInfo,antVMMigrationNumber),
-						crowdingDistance(antSleepingHostInfo,antVMMigrationNumber,
-								sortedIndicesOfSleepingHosts,sortedIndicesOfVMMigration));
-			}
-			else{
-				//calculateEnergy(antEnergyInfo,migrationMapList,antHostList);
-				calculateEnergy2(antEnergyInfo,migrationMapList,antHostList);
-				// Objective 1
-				sortedIndicesOfEnergyAfter = sortValues(antEnergyInfo);
-				// obj1 + obj2
-				ranks = ranking(nonDominatedSort(antEnergyInfo,antVMMigrationNumber),
-						crowdingDistance(antEnergyInfo,antVMMigrationNumber,
-								sortedIndicesOfEnergyAfter,sortedIndicesOfVMMigration));
-			}
-
-			int[] ranksFirstHalf = new int[rankLimit];
-			System.arraycopy(ranks,0,ranksFirstHalf,0,ranksFirstHalf.length);
-
-			// obj2 max, min
-			int maxVM = antVMMigrationNumber[sortedIndicesOfVMMigration[antVMMigrationNumber.length-1]];
-			int minVM = antVMMigrationNumber[sortedIndicesOfVMMigration[0]];
-			if(maxVM > globalMaxVM ) globalMaxVM = maxVM;
-			if(minVM < globalMinVM ) globalMinVM = minVM;
-
-			double maxHost = 0;
-			double minHost = 0;
-			double maxEnergy = 0;
-			double minEnergy = 0;
-			if(hostSleepControlInsteadEnergy) {
-				// obj3 max, min
-				maxHost = antSleepingHostInfo[sortedIndicesOfSleepingHosts[antSleepingHostInfo.length-1]];
-				minHost = antSleepingHostInfo[sortedIndicesOfSleepingHosts[0]];
-	            if(maxHost > globalMaxHost ) globalMaxHost = maxHost;
-	            if(minHost < globalMinHost ) globalMinHost = minHost;
-				setAntFitnesses(antFitness,antNumberOfPMsToSleep,antVMMigrationNumber);
-//				setAntFitnesses2(antFitness,antEnergyInfo,antVMMigrationNumber,globalMaxHost,globalMinHost,globalMaxVM,globalMinVM);
-			}else{
-				// obj1 max, min
-				maxEnergy = antEnergyInfo[sortedIndicesOfEnergyAfter[antEnergyInfo.length-1]];
-				minEnergy = antEnergyInfo[sortedIndicesOfEnergyAfter[0]];
-				//update global values
-				if(maxEnergy > globalMaxEnergy ) globalMaxEnergy = maxEnergy;
-				if(minEnergy < globalMinEnergy ) globalMinEnergy = minEnergy;
-				//setAntFitnesses2(antFitness,antEnergyInfo,antVMMigrationNumber,maxEnergy,minEnergy,maxVM,minVM);
-				setAntFitnesses2(antFitness,antEnergyInfo,antVMMigrationNumber,globalMaxEnergy,globalMinEnergy,globalMaxVM,globalMinVM);
-			}
+			ranks = ranking(nonDominatedSort(paretoEnergyInfo,paretoVMMigrationNumber),
+					crowdingDistance(paretoEnergyInfo,paretoVMMigrationNumber,
+							paretoSortedIndicesOfEnergyAfter,paretoSortedIndicesOfVMMigration));
 
 			/**
 			 * TODO
@@ -395,56 +340,111 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 			 * dont need to comment out one the other in each time
 			 */
 
-
 			pheromoneUpdate(pheromoneListVmAssign,pheromoneDecayGlobal,migrationMapList,
-					antFitness, vmListWithoutNullHosts, hostList, "vm2vm", ranksFirstHalf);//sortedIndicesOfEnergyAfter);//
+					colonyParetoList.planFitnesses, vmListWithoutNullHosts, hostList, "vm2vm", ranks);//sortedIndicesOfEnergyAfter);//
 
 			pheromoneUpdate(pheromoneListHostSelect,pheromoneDecayGlobal,migrationMapList,
-					antFitness, vmListWithoutNullHosts, hostList,"vm2host", ranksFirstHalf);
+					colonyParetoList.planFitnesses, vmListWithoutNullHosts, hostList,"vm2host", ranks);
+
+
+			// Adding ant fitness to pheromone, TODO now only for trial with 1 ant
+			List<Double> antFitnes = new ArrayList<>();
+			antFitnes.add(objectiveFunction2(antEnergyInfo[0],colonyParetoList.globalMaxEnergy,colonyParetoList.globalMinEnergy, antVMMigrationNumber[0],
+					colonyParetoList.globalMaxVM,colonyParetoList.globalMinVM));
+			int[] antRank = {0};
+
+			pheromoneUpdate(pheromoneListVmAssign,pheromoneDecayGlobal,migrationMapList,
+					antFitnes, vmListWithoutNullHosts, hostList, "vm2vm", antRank);//sortedIndicesOfEnergyAfter);//
+
+			pheromoneUpdate(pheromoneListHostSelect,pheromoneDecayGlobal,migrationMapList,
+					antFitnes, vmListWithoutNullHosts, hostList,"vm2host", antRank);
 
 			int indexOfBestAnt;
-			if(hostSleepControlInsteadEnergy) {
-				indexOfBestAnt = sortedIndicesOfSleepingHosts[0];//ranks[0];
-			}else{
-				indexOfBestAnt = sortedIndicesOfEnergyAfter[0];//ranks[0];
-			}
+			indexOfBestAnt = paretoSortedIndicesOfEnergyAfter[0];//ranks[0];
+
           	LinkedList<Map<String, Object>> bestLocalMigrationPlan = new LinkedList<Map<String, Object>>();
-			bestLocalMigrationPlan = migrationMapList.get(indexOfBestAnt);
-//          double bestLocalFitness = antFitness.get(indexOfBestAnt);
+			bestLocalMigrationPlan = colonyParetoList.migrationPlans.get(indexOfBestAnt);
 
-
-//			int bestLocalVM = antVMMigrationNumber[indexOfBestAnt];
-
-//			bestNumberOfSleepingPMs = antNumberOfPMsToSleep.get(indexOfBestAnt).size();
-
-			if(hostSleepControlInsteadEnergy) {
-				double bestLocalSleep = antSleepingHostInfo[indexOfBestAnt];
-				if(bestLocalSleep < bestSleep){
-					bestMigrationPlan = new LinkedList<Map<String, Object>>(bestLocalMigrationPlan);
-					bestEnergy = bestLocalSleep;
-				}
-			}else{
-				double bestLocalEnergy = antEnergyInfo[indexOfBestAnt];
-				//if(bestLocalFitness >= bestFitness && bestNumberOfSleepingPMs > bestSleepingHost){
-//            if(bestNumberOfSleepingPMs > bestSleepingHost){
-//            if( bestLocalEnergy < bestEnergy || (bestLocalEnergy == bestEnergy && bestLocalVM < bestVM )){
-				if(bestLocalEnergy < bestEnergy){
-//			if (iterationLimit - 1 == iteration){
-					bestMigrationPlan = new LinkedList<Map<String, Object>>(bestLocalMigrationPlan);
-//				LinkedList<Map<String, Object>> bestLocalMigrationPlan = new LinkedList<Map<String, Object>>();
-//				bestMigrationPlan = new LinkedList<Map<String, Object>>(migrationMapList.get(sortedIndicesOfEnergyAfter[0]));
-//                bestVM = bestLocalVM;
-					bestEnergy = bestLocalEnergy;
-//				bestFitness = bestLocalFitness;
-//				bestSleepingHost = bestNumberOfSleepingPMs;
-				}
+			double bestLocalEnergy = 0;
+			try {
+				bestLocalEnergy = paretoEnergyInfo[indexOfBestAnt];
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
+			if(bestLocalEnergy < bestEnergy){
+				bestMigrationPlan = new LinkedList<Map<String, Object>>(bestLocalMigrationPlan);
+				bestEnergy = bestLocalEnergy;
+			}
+
 			if(elitistAntON)
 				elitistUpdate(bestMigrationPlan,vmListWithoutNullHosts,hostList,pheromoneListVmAssign,rankLimit);
 
 			iteration++;
 		}
+
+		try {
+			String name = "myexperiments/" +
+					getClass().getName()
+							.replace("org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.", "")
+							.split("@")[0] + "vmNumbers.txt";
+			PrintWriter writer = new PrintWriter(new FileOutputStream(new File(name),true));
+			writer.println(bestMigrationPlan.size());
+			writer.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+
 		return bestMigrationPlan;
+	}
+
+	private void calculateHostUtilization(ArrayList<Double> hostUtilizationSingle, Double[] hostRealUtilization) {
+		List<Host> hostList = getHostList();
+		int counter = 0;
+		for(Host h: hostList) {
+			hostRealUtilization[counter] = (h.getTotalMips()-hostUtilizationSingle.get(counter))/h.getTotalMips();
+			counter++;
+		}
+	}
+
+	private void calculateHostUsedMips(List<Vm> vmListWithoutNullHosts,ArrayList<Double> hostUtilizationSingle,List<Host> sleepingHosts ) {
+		double totalRequestedMips;//, totalRequestedMips_NOTUSED;
+		List<Host> hostList = getHostList();
+		for(Host h: hostList) {
+//			totalRequestedMips_NOTUSED = hostList.get(i).getTotalMips()-hostList.get(i).getVmScheduler().getAvailableMips();
+			totalRequestedMips = 0;
+			for (Vm vm : h.getVmList()) {
+				totalRequestedMips +=  vm.getMips(); //vm.getCurrentRequestedTotalMips(); //
+				vmListWithoutNullHosts.add(vm);
+			}
+//			if(Math.abs(totalRequestedMips - totalRequestedMips_NOTUSED) > 0.1)
+//				Log.print("");
+			// update host utilization, according to indexes in hostlist*/
+			hostUtilizationSingle.add(totalRequestedMips);
+			//if(totalRequestedMips == hostList.get(i).getTotalMips()) sleepingHosts.add(hostList.get(i));
+			//if(hostList.get(i).getTotalMips() == hostList.get(i).getAvailableMips()) sleepingHosts.add(hostList.get(i));
+			if (h.getVmList().size() == 0) {
+				sleepingHosts.add(h);
+			}
+		}
+	}
+
+	private void findHostedVMs(List<Vm> vmListWithoutNullHosts,
+							   List<? extends Vm> vmList,
+							   ArrayList<Integer> vmIDOfNullHostedVms,
+							   List<Vm> vmsInMigraiton) {
+		for (Vm vm : vmList){
+			if (vm.isInMigration()) {
+				vmsInMigraiton.add(vm);
+			}
+			if (vm.getHost() != null) {
+//				if (!hostList.contains(vm.getHost())) {
+//					hostList.add(vm.getHost());
+//				}
+				//vmListWithoutNullHosts.add(vm);
+			}else {
+				vmIDOfNullHostedVms.add(vm.getId());
+			}
+		}
 	}
 
 	public <T extends Comparable> int[] sortValues(T[] array){
@@ -538,16 +538,13 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 
 	/**
 	 *
-	 * @param antEnergyInfo1
-	 * @param antEnergyInfo2
-	 * @param antVMMigrationNumber1
-	 * @param antVMMigrationNumber2
+	 * @param energyInfo1
+	 * @param energyInfo2
+	 * @param VMMigrationNumber1
+	 * @param VMMigrationNumber2
 	 * @return
 	 */
-    public static boolean dominationCheck(Double antEnergyInfo1, Double antEnergyInfo2,int antVMMigrationNumber1, int antVMMigrationNumber2){
-		double energyInfo1 = antEnergyInfo1, energyInfo2 = antEnergyInfo2;
-		int VMMigrationNumber1 = antVMMigrationNumber1, VMMigrationNumber2 = antVMMigrationNumber2;
-
+    public static boolean dominationCheck(Double energyInfo1, Double energyInfo2,int VMMigrationNumber1, int VMMigrationNumber2){
 		if( (energyInfo1<energyInfo2 || VMMigrationNumber1<VMMigrationNumber2)
 				&& (energyInfo1<=energyInfo2 && VMMigrationNumber1<=VMMigrationNumber2))
 			return true;
@@ -563,7 +560,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	public double[] crowdingDistance(Double[] antEnergyInfo, Integer[] antVMMigrationNumber,
                                      int[] sortedIndicesOfEnergyAfter, int[] sortedIndicesOfVMMigration) {
 
-		double[] crowdingDistances = new double[antNumber];
+		double[] crowdingDistances = new double[antEnergyInfo.length];
 
 		crowdingDistances[sortedIndicesOfEnergyAfter[0]] += crowdMaxValue;
 		crowdingDistances[sortedIndicesOfEnergyAfter[antNumber-1]] += crowdMaxValue;
@@ -572,7 +569,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		crowdingDistances[sortedIndicesOfVMMigration[antNumber-1]] += crowdMaxValue;
 
 		double obj1Value, obj2Value;
-		for(int j=1; j<antNumber-1; j++) {
+		for(int j=1; j<antEnergyInfo.length-1; j++) {
 			obj1Value = antEnergyInfo[sortedIndicesOfEnergyAfter[j+1]]
 									-antEnergyInfo[sortedIndicesOfEnergyAfter[j-1]];
 			obj2Value = antVMMigrationNumber[sortedIndicesOfVMMigration[j+1]]
@@ -747,7 +744,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	 * @param antEnergy
 	 * @param antVmMigration
 	 */
-	public void setAntFitnesses2(List<Double> antFitness,Double[] antEnergy,
+	public static void setAntFitnesses2(List<Double> antFitness,Double[] antEnergy,
 								 Integer[] antVmMigration,
                                  Double maxEnergy, Double minEnergy, Integer maxVMNumber, Integer minVMNumber){
 		for(int i=0; i<antNumber; i++) {
@@ -777,8 +774,11 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	public int selectNewVm(List<Vm> vmList,
 						   List<Double> pheromoneList,
 						   LinkedList<Map<String,Object>> migrationMap,
-						   List<Double> heuristicList
-	){
+						   List<Double> heuristicList,
+						   List<Host> hostList,
+						   int[] sortedHostIndexes,
+						   int antID, int iteration){
+
 		List<Integer> notYetSelectedVMs = new ArrayList<Integer>();	// index of not selected vms in vmlist, to prevent to migrate a vm more than once
 		List<Double> nonSelectedPheromones = new ArrayList<Double>();	// pheromones of vms according to index
 		List<Double> nonSelectedHeuristics = new ArrayList<Double>();	// pheromones of vms according to index
@@ -790,20 +790,29 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 			previouslySelectedVMs.add(vmList.indexOf(vm));
 		}
 
-		// Non-selected vms are put into a list, also their probabilities
+		int selectedHostForAnt = sortedHostIndexes[antID];
+		// 10 Non-selected vms (which are located underutilized hosts) are put into a list,
+		// also their probabilities
 		int counter = 0;
-		for(int i=0; i<vmList.size(); i++) {
-			if (!previouslySelectedVMs.contains(i)) {
-				notYetSelectedVMs.add(i);
-				nonSelectedPheromones.add(pheromoneList.get(i));
-				nonSelectedHeuristics.add(heuristicList.get(i));
-				counter++;
+		for (int j = 0; j < sortedHostIndexes.length; j++) {
+			Host h = hostList.get(sortedHostIndexes[j]);
+			for(int i=0; i<h.getVmList().size(); i++) {
+				if(iteration != 0){
+					iteration--;
+					continue;
+				}
+				Vm vm = h.getVmList().get(i);
+				int indexOfVm = vmList.indexOf(vm);
+				if (!previouslySelectedVMs.contains(indexOfVm)) {
+					notYetSelectedVMs.add(indexOfVm);
+					nonSelectedPheromones.add(pheromoneList.get(indexOfVm));
+					nonSelectedHeuristics.add(heuristicList.get(indexOfVm));
+					counter++;
+				}
+				if(counter == antVMNumber) break;
 			}
+			if(counter == antVMNumber) break;
 		}
-
-		// There is no available VM, all of them migrated at least once
-		if(notYetSelectedVMs.size() == 0)
-			return -1;
 
 		return probabilisticResult(nonSelectedPheromones,nonSelectedHeuristics,notYetSelectedVMs);
 	}
@@ -814,6 +823,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 							 List<Double> heuristicList,
 							 antHost theAntHost,
 							 ArrayList<Integer> antNumberOfPMsToSleep,
+							 int[] sortedHostIndexes,
 							 LinkedList<Map<String,Object>> migrationMap
 	) {
 
@@ -856,6 +866,8 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		 *  TODO check for returned value if it is index of host or host id
 		 */
 		 indexOfDestinationHost = probabilisticResult(availableHostPheromones,availableHostHeuristics,availableHosts);
+
+//		indexOfDestinationHost = findAvailableHostFromSortedIndexes(availableHosts,sortedHostIndexes);
 
 		/**
 		 *  host selection with max util value
@@ -916,6 +928,16 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return indexOfDestinationHost;
 	}
 
+	private int findAvailableHostFromSortedIndexes(List<Integer> availableHosts, int[] sortedHostIndexes) {
+		for (int j = 0; j < availableHosts.size(); j++) {
+			for (int i = 0; i < sortedHostIndexes.length; i++) {
+				if(sortedHostIndexes[i] == availableHosts.get(j))
+					return availableHosts.get(j);
+			}
+		}
+		return 0;
+	}
+
 	// return host index which has max utilization
 	int findMaxUtiledhost (List<Integer> availableHosts, ArrayList<Double> utilVal, List<Host> hostList, double vmMips){
 		int maxIndex = -1;
@@ -936,35 +958,6 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return maxIndex;
 	}
 
-
-	/**
-	 * Will vm migration improve the ratio of newHostUtilization/oldHostUtilization?
-	 * @param candidateHostUsedMips
-	 * @param vm
-	 * @param h
-	 * @return
-	 */
-	public boolean isUtilizationImproved(Double candidateHostUsedMips, Double originalHostUsedMips,Vm vm, Host h) {
-		// original -> current host, current and candidate has similar phonetics, to prevent confusion original preferred
-		double originalHostTotalMips = vm.getHost().getTotalMips();
-		double candidateHostTotalMips = h.getTotalMips();
-
-		double utilOfOriginalHost = originalHostUsedMips/originalHostTotalMips;
-		double utilOfCandidateHost = candidateHostUsedMips/candidateHostTotalMips;
-
-		double nextUtilOfOriginalHost = (originalHostUsedMips-vm.getMips())/originalHostTotalMips; //vm.getCurrentRequestedTotalMips())/originalHostTotalMips; //
-		double nextUtilOfCandidateHost = (candidateHostUsedMips+vm.getMips())/candidateHostTotalMips; //vm.getCurrentRequestedTotalMips())/candidateHostTotalMips; //
-
-		double currentRatio = utilOfCandidateHost/utilOfOriginalHost;
-		double nextRatio = nextUtilOfCandidateHost/nextUtilOfOriginalHost;
-
-		/*if(currentRatio < 0 || nextRatio < 0)
-			Log.print("");*/
-
-		if(nextRatio>currentRatio) return true;
-		else return false;
-	}
-
 	public boolean isAntHostIsSuitable(Double hostUtilization, Vm vm, Host h) {
 //	    hostUtilization shows the currently used MIPS amount of the Host
 //		if((h.getTotalMips() - hostUtilization) - vm.getCurrentRequestedTotalMips() < 0
@@ -974,7 +967,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		// if (destinationUtilization > hostList.get(destinationHost).getTotalMips())
         double newAvailableMips =  h.getTotalMips() - hostUtilization;
         double vmMips = vm.getMips();//vm.getCurrentRequestedTotalMips();//
-		return (h.getVmScheduler().getPeCapacity()*0.9 >= vmMips // TODO 0.9 keeps efficiency low, but prevents utilization crash
+		return (h.getVmScheduler().getPeCapacity() >= vmMips // TODO 0.9 keeps efficiency low, but prevents utilization crash
 				&& newAvailableMips >= vmMips
 				&& (hostUtilization + vmMips) < h.getTotalMips()
 				&& h.getRamProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedRam()) && h.getBwProvisioner()
@@ -1175,7 +1168,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 								antHost antHostList,
 								List<Double> antHeuristicsVM,
 								List<Double> antHeuristicsHost) {
-
+		List<Host> hostList = getHostList();
 		double vmNewHostTotalMips = hostList.get(hostSelectionResult).getTotalMips();
 		double vmNewHostUtilization = antHostList.utilVal.get(hostSelectionResult);
 		Double vmHeuristicUpdate = (vmNewHostTotalMips - vmNewHostUtilization) / vmNewHostTotalMips;
@@ -1272,7 +1265,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
      * @param minVMNumber
      * @return
      */
-	public Double objectiveFunction2(Double antEnergy, Double maxEnergy, Double minEnergy, Integer antVMNumber,
+	public static Double objectiveFunction2(Double antEnergy, Double maxEnergy, Double minEnergy, Integer antVMNumber,
                                      Integer maxVMNumber, Integer minVMNumber){
 	    // normalized between 0 - 1
 		double normalizedEnergy = 0;

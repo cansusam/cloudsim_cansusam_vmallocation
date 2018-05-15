@@ -34,7 +34,7 @@ public class canConstants {
         public static final double relativeImportanceOfHeuristic = 1;
         public static final double relativeImportancePheromone = 2;
 
-        public static final double pheromonePowerConstant = 2; // Math.pow(pheromonePowerConstant,ranksLength-k)/ranksLength;
+        public static final double pheromonePowerConstant = 10; // Math.pow(pheromonePowerConstant,ranksLength-k)/ranksLength;
 
         public static int iterationLimit = 20;
         public static int antNumber = 20;

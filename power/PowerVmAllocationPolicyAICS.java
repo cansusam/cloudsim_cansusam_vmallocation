@@ -11,6 +11,9 @@ package org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power;
 import org.cloudbus.cloudsim.*;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.power.PowerHost;
+import org.cloudbus.cloudsim.power.PowerHostUtilizationHistory;
+import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyMigrationAbstract;
+import org.cloudbus.cloudsim.power.PowerVmSelectionPolicy;
 
 import java.io.*;
 import java.io.File;
@@ -18,11 +21,12 @@ import java.util.*;
 import java.util.stream.IntStream;
 
 import static java.lang.Math.pow;
+import static org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.canConstants.NSGAII_nonmigabst.*;
 
 /**
  * @author canssm
  */
-public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstractExtended {
+public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyMigrationAbstract {
 
 	/** The map between each VM and its allocated host.
 	 * The map key is a VM UID and the value is the allocated host for that VM. */
@@ -39,48 +43,28 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 
 	/** Utilization boundaries. */
 
-	static double relativeImportanceOfPMsToSleep;
-	static double relativeImportanceOfEnergy;
-	static double relativeImportanceOfVMMigration;
-	double relativeImportanceOfHeuristic;
-	double relativeImportancePheromone;
-
-	int iterationLimit;
-	static int antNumber;
-	//int antVMRatio;
-	int antVMNumber;
-	double parameterQ0;
-	double pheromoneDecayGlobal;
-
-	double pheromonePowerConstant;
-
-	int rankLimit;
-
-	double initialPheromoneLevelVmAssign;
-	double initialPheromoneLevelHostSelect;
-
-	boolean hostSleepControlInsteadEnergy;
-
-	boolean elitistAntON;
-    int elitistAntNumber;
-    int elitistRepeat;
-
-    int seed;
-
 	double crowdMaxValue =  Double.POSITIVE_INFINITY;
-
 	private Random randomGen;
 
-
-	int hostClearNumber = 20;
+	@Override
+	protected boolean isHostOverUtilized(PowerHost host) {
+		addHistoryEntry(host, 0.9);
+		double totalRequestedMips = 0;
+		for (Vm vm : host.getVmList()) {
+			totalRequestedMips += vm.getCurrentRequestedTotalMips();
+		}
+		double utilization = totalRequestedMips / host.getTotalMips();
+		return utilization > 0.9;
+	}
 
 	/**
 	 * Instantiates a new PowerVmAllocationPolicySimple.
 	 *
 	 * @param list the list
 	 */
-	public PowerVmAllocationPolicyAICS(List<? extends Host> list) {
-		super(list);
+	public PowerVmAllocationPolicyAICS(List<? extends Host> list,
+									   PowerVmSelectionPolicy vmSelectionPolicy) {
+		super(list,vmSelectionPolicy);
 
 		setFreePes(new ArrayList<Integer>());
 		for (Host host : getHostList()) {
@@ -90,36 +74,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 
 		setVmTable(new HashMap<String, Host>());
 		setUsedPes(new HashMap<String, Integer>());
-
-		canConstants.NSGAII_nonmigabst myConstants = new canConstants.NSGAII_nonmigabst();
-
-		relativeImportanceOfPMsToSleep = myConstants.relativeImportanceOfPMsToSleep;
-		relativeImportanceOfEnergy = myConstants.relativeImportanceOfEnergy;
-		relativeImportanceOfVMMigration = myConstants.relativeImportanceOfVMMigration;
-		relativeImportanceOfHeuristic = myConstants.relativeImportanceOfHeuristic;
-		relativeImportancePheromone = myConstants.relativeImportancePheromone;
-
-		iterationLimit = myConstants.iterationLimit;
-		antNumber = myConstants.antNumber;
 		//antVMRatio = myConstants.antVMNumberRatio;
-		antVMNumber = myConstants.antVMNumber;
-		parameterQ0 = myConstants.parameterQ0;
-		pheromoneDecayGlobal = myConstants.pheromoneDecayGlobal;
-
-		pheromonePowerConstant = myConstants.pheromonePowerConstant;
-
-		rankLimit = myConstants.rankLimit;
-
-
-		initialPheromoneLevelVmAssign = myConstants.initialPheromoneLevelVmAssign;
-		initialPheromoneLevelHostSelect = myConstants.initialPheromoneLevelHostSelect;
-
-		hostSleepControlInsteadEnergy = myConstants.hostSleepControlInsteadEnergy;
-		elitistAntON = myConstants.elitistAntON;
-		elitistAntNumber = myConstants.elitistAntNumber;
-		elitistRepeat = myConstants.elitistRepeat;
-
-		seed = myConstants.seed;
 	}
 
         /**
@@ -132,12 +87,21 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	public List<Map<String, Object>> optimizeAllocation(List<? extends Vm> vmList) {
 	    if(vmList.isEmpty()) return null;
 
+		/*List<PowerHostUtilizationHistory> overUtilizedHosts = getOverUtilizedHosts();
+		saveAllocation();
+
+		List<? extends Vm> vmsToMigrate = getVmsToMigrateFromHosts(overUtilizedHosts);
+		List<Map<String, Object>> migrationMap = getNewVmPlacement(vmsToMigrate, new HashSet<Host>(
+				overUtilizedHosts));
+		migrationMap.addAll(getMigrationMapFromUnderUtilizedHosts(overUtilizedHosts));
+
+		restoreAllocation();
+		return migrationMap;*/
+
 		randomGen = new Random(seed);
-//		int antVMNumber = vmList.size(); //vmList.size()/antVMRatio;
 
 		LinkedList<Map<String, Object>> bestMigrationPlan = new LinkedList<Map<String, Object>>();
 		paretoList colonyParetoList = new paretoList();
-//		Double bestFitness = -1.0;
 
 		List<Host> sleepingHosts = new ArrayList<>();
 		List<ArrayList<Double>> pheromoneListVmAssign = new ArrayList<ArrayList<Double>>();
@@ -154,10 +118,8 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		List<Vm> vmsInMigraiton = new ArrayList<>();
 
 		// Get current host list
-//		List<Host> hostList2 = new ArrayList<Host>();
 		List<Host> hostList = getHostList();
 		findHostedVMs(vmListWithoutNullHosts,vmList,vmIDOfNullHostedVms,vmsInMigraiton);
-
 
 		// Host utilization matrix, shows remaining capacity to reach to sleep
 		ArrayList<Double> hostUtilizationSingle = new ArrayList<Double>();
@@ -170,17 +132,6 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		int[] sortedHostUtilizationIndexes = new int[hostList.size()];
 		sortedHostUtilizationIndexes = sortValues(hostRealUtilization);
 
-//		int bestSleepingHost = sleepingHosts.size();
-
-		// while migration, destination hosts MIPS should be decreased for further calculations
-//		for(int k=0; k<vmIDOfNullHostedVms.size(); k++) {
-//			Vm vm = findVmWithID(vmList, vmIDOfNullHostedVms.get(k));
-//			Log.print("");
-//		}
-
-		// Host utilization matrix, shows remaining capacity to reach to sleep
-		// Previously calculated value copied for each ant to simplify their calculation step
-
 		pheromoneListVmAssign = pheromoneInitialization(pheromoneListVmAssign,vmListWithoutNullHosts.size(),
 				vmListWithoutNullHosts.size(), initialPheromoneLevelVmAssign);
 
@@ -192,18 +143,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		/** ACO simulation starts from this point */
 
 		int iteration = 0;
-//		int bestNumberOfSleepingPMs = -1;
-
 		double bestEnergy = Double.POSITIVE_INFINITY;
-		double bestSleep = Double.POSITIVE_INFINITY;
-//		int bestVM = antVMNumber;
-
-		double globalMaxHost = Double.NEGATIVE_INFINITY;
-        double globalMinHost = Double.POSITIVE_INFINITY;
-        double globalMaxEnergy = Double.NEGATIVE_INFINITY;
-        double globalMinEnergy = Double.POSITIVE_INFINITY;
-        int globalMaxVM = 0;
-        int globalMinVM = antVMNumber;
 
         /**
          * "no enough MIPS" error occurs, when?
@@ -281,14 +221,18 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 					// select new VM
 					// for first condition, vm selected by randomly
                     // ant may not have a previously selected vm because it could not find appropriate one
-					antSelectedVm[l] = selectNewVm(vmListWithoutNullHosts,
-														pheromoneListVmAssign.get(antSelectedVm[l]),
-														migrationMapList.get(l),
-														antHeuristicsVM.get(l),
-														hostList,
-														sortedHostUtilizationIndexes,
-														l,
-														k);
+					try {
+						antSelectedVm[l] = selectNewVm(vmListWithoutNullHosts,
+															pheromoneListVmAssign.get(antSelectedVm[l]),
+															migrationMapList.get(l),
+															antHeuristicsVM.get(l),
+															hostList,
+															sortedHostUtilizationIndexes,
+															l,
+															k);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
 					//antSelectedVm[l] = getVMFromHost(l,sortedHostUtilizationIndexes,vmListWithoutNullHosts)
 					// select new Host
 					if (antSelectedVm[l] != -1)
@@ -383,10 +327,23 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		}
 
 		try {
-			String name = "myexperiments/" +
+		    String staticFolderName = folderName;
+			String folderName =  "myexperiments/" +
 					getClass().getName()
 							.replace("org.cloudbus.cloudsim.cloudsim_cansusam_vmallocation.power.", "")
-							.split("@")[0] + "vmNumbers.txt";
+							.split("@")[0] + "/" + staticFolderName + "/";
+			File folder = new File(folderName);
+			if(!folder.exists())
+				folder.mkdir();
+			folderName = folderName + "IterationNumbers/";
+			File folder2 = new File(folderName);
+			if(!folder2.exists())
+				folder2.mkdir();
+			String name = folderName
+					+ iterationLimit + "_"
+					+ antNumber + "_"
+					+ antVMNumber + "_"
+					+ pheromoneDecayGlobal +  ".txt";
 			PrintWriter writer = new PrintWriter(new FileOutputStream(new File(name),true));
 			writer.println(bestMigrationPlan.size());
 			writer.close();
@@ -413,7 +370,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 //			totalRequestedMips_NOTUSED = hostList.get(i).getTotalMips()-hostList.get(i).getVmScheduler().getAvailableMips();
 			totalRequestedMips = 0;
 			for (Vm vm : h.getVmList()) {
-				totalRequestedMips +=  vm.getMips(); //vm.getCurrentRequestedTotalMips(); //
+				totalRequestedMips +=  vm.getTotalUtilizationOfCpuMips(CloudSim.clock());//vm.getMips(); //vm.getCurrentRequestedTotalMips(); //
 				vmListWithoutNullHosts.add(vm);
 			}
 //			if(Math.abs(totalRequestedMips - totalRequestedMips_NOTUSED) > 0.1)
@@ -790,28 +747,38 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 			previouslySelectedVMs.add(vmList.indexOf(vm));
 		}
 
-		int selectedHostForAnt = sortedHostIndexes[antID];
-		// 10 Non-selected vms (which are located underutilized hosts) are put into a list,
-		// also their probabilities
+//		int selectedHostForAnt = sortedHostIndexes[antID];
+//		// 10 Non-selected vms (which are located underutilized hosts) are put into a list,
+//		// also their probabilities
+//		int counter = 0;
+//		for (int j = 0; j < sortedHostIndexes.length; j++) {
+//			Host h = hostList.get(sortedHostIndexes[j]);
+//			for(int i=0; i<h.getVmList().size(); i++) {
+//				if(iteration != 0){
+//					iteration--;
+//					continue;
+//				}
+//				Vm vm = h.getVmList().get(i);
+//				int indexOfVm = vmList.indexOf(vm);
+//				if (!previouslySelectedVMs.contains(indexOfVm)) {
+//					notYetSelectedVMs.add(indexOfVm);
+//					nonSelectedPheromones.add(pheromoneList.get(indexOfVm));
+//					nonSelectedHeuristics.add(heuristicList.get(indexOfVm));
+//					counter++;
+//				}
+//				if(counter == antVMNumber ||counter == vmList.size()) break;
+//			}
+//			if(counter == antVMNumber||counter == vmList.size()) break;
+//		}
+		// Non-selected vms are put into a list, also their probabilities
 		int counter = 0;
-		for (int j = 0; j < sortedHostIndexes.length; j++) {
-			Host h = hostList.get(sortedHostIndexes[j]);
-			for(int i=0; i<h.getVmList().size(); i++) {
-				if(iteration != 0){
-					iteration--;
-					continue;
-				}
-				Vm vm = h.getVmList().get(i);
-				int indexOfVm = vmList.indexOf(vm);
-				if (!previouslySelectedVMs.contains(indexOfVm)) {
-					notYetSelectedVMs.add(indexOfVm);
-					nonSelectedPheromones.add(pheromoneList.get(indexOfVm));
-					nonSelectedHeuristics.add(heuristicList.get(indexOfVm));
-					counter++;
-				}
-				if(counter == antVMNumber) break;
+		for(int i=0; i<vmList.size(); i++) {
+			if (!previouslySelectedVMs.contains(i)) {
+				notYetSelectedVMs.add(i);
+				nonSelectedPheromones.add(pheromoneList.get(i));
+				nonSelectedHeuristics.add(heuristicList.get(i));
+				counter++;
 			}
-			if(counter == antVMNumber) break;
 		}
 
 		return probabilisticResult(nonSelectedPheromones,nonSelectedHeuristics,notYetSelectedVMs);
@@ -839,13 +806,12 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 			// the host should not contain the original VM
 			// must be suitable for vm
 			// and should not be in sleeping mode
-			if (
-			        !theAntHost.Vm.get(i).contains(selectedVm.getId())
+			if (    !theAntHost.Vm.get(i).contains(selectedVm.getId())
 					&& isAntHostIsSuitable(theAntHost.utilVal.get(i), selectedVm, hostList.get(i))
 					&& !antNumberOfPMsToSleep.contains(theAntHost.Host.get(i)) // TODO turn ON/OFF
 //					&& isUtilizationImproved(theAntHost.utilVal.get(i),theAntHost.utilVal.get(indexOfSourceHost),
 //                     selectedVm, hostList.get(i))
-                    ) {
+				) {
 				availableHosts.add(i); // index of host is added
 //				if(Double.isNaN(pheromoneList.get(i)))
 //					Log.print("");
@@ -857,7 +823,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		if(availableHosts.size() == 0)
 			return -1;
 
-		double vmMips = selectedVm.getMips();//getCurrentRequestedTotalMips();//
+		double vmMips = selectedVm.getTotalUtilizationOfCpuMips(CloudSim.clock());//getMips();//getCurrentRequestedTotalMips();//
 
 		int indexOfDestinationHost;
 		// since the antHost host list created according to hostList, indexes must match
@@ -865,7 +831,7 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		 *  host selection with pheromone matrix
 		 *  TODO check for returned value if it is index of host or host id
 		 */
-		 indexOfDestinationHost = probabilisticResult(availableHostPheromones,availableHostHeuristics,availableHosts);
+//		 indexOfDestinationHost = probabilisticResult(availableHostPheromones,availableHostHeuristics,availableHosts);
 
 //		indexOfDestinationHost = findAvailableHostFromSortedIndexes(availableHosts,sortedHostIndexes);
 
@@ -873,12 +839,15 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		 *  host selection with max util value
 		 *  TODO change selection of max utilized host
 		 */
-//		indexOfDestinationHost = findMaxUtiledhost(availableHosts,theAntHost.utilVal,hostList,vmMips);
+		indexOfDestinationHost = findMaxUtiledhost(availableHosts,theAntHost.utilVal,hostList,vmMips);
 
 
 		if (indexOfDestinationHost == -1)
 			return -1;
 
+		if(indexOfDestinationHost == 566 && CloudSim.clock() > 27600.0){
+			System.out.print("");
+		}
 
 
 		//update host information
@@ -938,6 +907,14 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return 0;
 	}
 
+	/**
+	 *
+	 * @param availableHosts
+	 * @param utilVal
+	 * @param hostList
+	 * @param vmMips
+	 * @return
+	 */
 	// return host index which has max utilization
 	int findMaxUtiledhost (List<Integer> availableHosts, ArrayList<Double> utilVal, List<Host> hostList, double vmMips){
 		int maxIndex = -1;
@@ -958,6 +935,13 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return maxIndex;
 	}
 
+	/**
+	 *
+	 * @param hostUtilization
+	 * @param vm
+	 * @param h
+	 * @return
+	 */
 	public boolean isAntHostIsSuitable(Double hostUtilization, Vm vm, Host h) {
 //	    hostUtilization shows the currently used MIPS amount of the Host
 //		if((h.getTotalMips() - hostUtilization) - vm.getCurrentRequestedTotalMips() < 0
@@ -966,15 +950,22 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 
 		// if (destinationUtilization > hostList.get(destinationHost).getTotalMips())
         double newAvailableMips =  h.getTotalMips() - hostUtilization;
-        double vmMips = vm.getMips();//vm.getCurrentRequestedTotalMips();//
+        double vmMips = vm.getTotalUtilizationOfCpuMips(CloudSim.clock());//vm.getMips();//vm.getCurrentRequestedTotalMips();//
 		return (h.getVmScheduler().getPeCapacity() >= vmMips // TODO 0.9 keeps efficiency low, but prevents utilization crash
-				&& newAvailableMips >= vmMips
-				&& (hostUtilization + vmMips) < h.getTotalMips()
-				&& h.getRamProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedRam()) && h.getBwProvisioner()
-				.isSuitableForVm(vm, vm.getCurrentRequestedBw()));
+				&& newAvailableMips*0.9 >= vmMips
+//				&& h.getRamProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedRam())
+//                && h.getBwProvisioner().isSuitableForVm(vm, vm.getCurrentRequestedBw())
+        );
 	}
 
 
+	/**
+	 *
+	 * @param nonSelectedPheromones
+	 * @param nonSelectedHeuristics
+	 * @param notYetSelected
+	 * @return
+	 */
 	public int probabilisticResult(List<Double> nonSelectedPheromones,
 								   List<Double> nonSelectedHeuristics,
 								   List<Integer> notYetSelected
@@ -1000,6 +991,14 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return -1;
 	}
 
+	/**
+	 *
+	 * @param migrationMapList
+	 * @param vmList
+	 * @param hostList
+	 * @param pheromoneList
+	 * @param ranksLength
+	 */
 	public void elitistUpdate(List<Map<String, Object>>  migrationMapList,
 							  List<Vm> vmList, List<Host> hostList,
 							  List<ArrayList<Double>>  pheromoneList,
@@ -1037,6 +1036,13 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 	/**
 	 *
 	 * @param pheromoneList
+	 * @param pheromoneDecay
+	 * @param migrationMapList
+	 * @param antFitness
+	 * @param vmList
+	 * @param hostList
+	 * @param whichUpdate
+	 * @param ranks
 	 */
 	public void pheromoneUpdate(List<ArrayList<Double>>  pheromoneList, double pheromoneDecay,
 								List<LinkedList<Map<String, Object>>>  migrationMapList, List<Double> antFitness,
@@ -1117,10 +1123,11 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		migrationMap.add(migrate);
 	}
 
-
-
 	/**
 	 *
+	 * @param nonSelectedPheromones
+	 * @param nonSelectedHeuristics
+	 * @return
 	 */
 	public double[] pheromoneDistribution(List<Double> nonSelectedPheromones,
 										  List<Double> nonSelectedHeuristics){
@@ -1162,6 +1169,15 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		return (host.getTotalMips()-host.getAvailableMips())/host.getTotalMips();
 	}
 
+	/**
+	 *
+	 * @param vmListWithoutNullHosts
+	 * @param antSelectedVm
+	 * @param hostSelectionResult
+	 * @param antHostList
+	 * @param antHeuristicsVM
+	 * @param antHeuristicsHost
+	 */
 	public void heuristicUpdate(List<Vm> vmListWithoutNullHosts,
 								int antSelectedVm,
 								int hostSelectionResult,
@@ -1450,5 +1466,21 @@ public class PowerVmAllocationPolicyAICS extends PowerVmAllocationPolicyAbstract
 		// not found
 		System.out.println("Vm not found in vmList!!!");
 		return null;
+	}
+
+	public int[] findIndexOfVmInAntHost(antHost theAntHost, Vm vm) {
+		int userId = vm.getUserId();
+		int vmId = vm.getId();
+		for(int i=0; i<theAntHost.Host.size(); i++) {
+			for(int j=0; j<theAntHost.Vm.get(i).size(); j++) {
+				if (userId == theAntHost.UserId.get(i).get(j) && vmId == theAntHost.Vm.get(i).get(j)) {
+					int[] indexOfVmAndItsHostInAntHost = new int[]{j,i};
+					return indexOfVmAndItsHostInAntHost;
+				}
+			}
+		}
+		// not found
+		int[] a = new int[]{-1, -1};
+		return a;
 	}
 }

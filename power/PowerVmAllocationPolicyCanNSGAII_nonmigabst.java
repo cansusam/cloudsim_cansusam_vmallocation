@@ -37,7 +37,7 @@ import static java.lang.Math.pow;
         import static java.lang.Math.pow;
 
 /**
- * @author canssm
+ * @author Omercan Susam - 504162517
  */
 public class PowerVmAllocationPolicyCanNSGAII_nonmigabst extends PowerVmAllocationPolicyAbstract {
 
